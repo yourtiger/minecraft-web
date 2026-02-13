@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "outputDirectory": ".",
+  "rewrites": [
+    {
+      "source": "/assets/(.*)",
+      "destination": "/assets/$1"
+    },
+    {
+      "source": "/textures/(.*)",
+      "destination": "/textures/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>Minecraft Web - 移动端版</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
+    body { 
+      overflow: hidden; 
+      background: #000; 
+      font-family: monospace; 
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #game-container { width: 100vw; height: 100vh; }
+    
+    /* UI 样式 */
+    #ui {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-size: 12px;
+      text-shadow: 2px 2px 0 #000;
+      pointer-events: none;
+      z-index: 100;
+      line-height: 1.6;
+    }
+    
+    /* 准星 */
+    #crosshair {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 20px;
+      height: 20px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 100;
+    }
+    #crosshair::before, #crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(255, 255, 255, 0.8);
+    }
+    #crosshair::before { width: 2px; height: 20px; left: 9px; top: 0; }
+    #crosshair::after { width: 20px; height: 2px; left: 0; top: 9px; }
+    
+    /* 虚拟摇杆 */
+    #joystick-zone {
+      position: fixed;
+      bottom: 100px;
+      left: 20px;
+      width: 150px;
+      height: 150px;
+      z-index: 200;
+    }
+    
+    #joystick-base {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    #joystick-stick {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.6);
+      top: 35px;
+      left: 35px;
+      transition: transform 0.1s;
+    }
+    
+    /* 操作按钮 */
+    #controls {
+      position: fixed;
+      bottom: 100px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 200;
+    }
+    
+    .control-btn {
+      width: 65px;
+      height: 65px;
+      border: 3px solid rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      font-size: 13px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    
+    .control-btn:active {
+      background: rgba(255, 255, 255, 0.4);
+      transform: scale(0.95);
+    }
+    
+    .control-btn.jump { background: rgba(100, 200, 100, 0.4); border-color: #4a4; }
+    .control-btn.break { background: rgba(200, 100, 100, 0.4); border-color: #a44; }
+    .control-btn.place { background: rgba(100, 100, 200, 0.4); border-color: #44a; }
+    
+    /* 方块选择器 */
+    #block-selector {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 8px 12px;
+      border-radius: 10px;
+      z-index: 200;
+    }
+    
+    .block-btn {
+      width: 45px;
+      height: 45px;
+      border: 3px solid #666;
+      background: #333;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    
+    .block-btn.active { border-color: #0f0; box-shadow: 0 0 10px #0f0; }
+    .block-btn[data-block="grass"] { background: #4a8522; }
+    .block-btn[data-block="dirt"] { background: #8b4513; }
+    .block-btn[data-block="stone"] { background: #808080; }
+    .block-btn[data-block="wood"] { background: #654321; }
+    .block-btn[data-block="leaves"] { background: #228b22; }
+    
+    /* 视角控制区域 */
+    #look-zone {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 70%;
+      height: 70%;
+      z-index: 50;
+    }
+    
+    /* 调试信息 */
+    #debug-info {
+      position: fixed;
+      top: 50%;
+      left: 10px;
+      color: #0f0;
+      font-size: 10px;
+      text-shadow: 1px 1px 0 #000;
+      z-index: 300;
+      pointer-events: none;
+      display: none;
+    }
+    
+    /* 移动端提示 */
+    #mobile-hint {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-size: 14px;
+      text-align: center;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      z-index: 300;
+      display: none;
+    }
+    
+    /* 网络状态 - 隐藏 */
+    #network-status {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div>XYZ: <span id="coords">0, 0, 0</span></div>
+    <div>FPS: <span id="fps">60</span></div>
+    <div>方块: <span id="block-count">0</span></div>
+    <div id="mobile-indicator" style="display:none;">📱 移动端模式</div>
+  </div>
+  
+  <div id="network-status">
+    <div>状态: <span id="connection-status">离线</span></div>
+    <div id="player-count">在线: 1人</div>
+  </div>
+  
+  <div id="crosshair"></div>
+  
+  <div id="debug-info"></div>
+  
+  <!-- 视角控制区域 -->
+  <div id="look-zone"></div>
+  
+  <!-- 虚拟摇杆 -->
+  <div id="joystick-zone">
+    <div id="joystick-base">
+      <div id="joystick-stick"></div>
+    </div>
+  </div>
+  
+  <!-- 操作按钮 -->
+  <div id="controls">
+    <div class="control-btn jump" id="btn-jump">跳跃</div>
+    <div class="control-btn break" id="btn-break">破坏</div>
+    <div class="control-btn place" id="btn-place">放置</div>
+  </div>
+  
+  <!-- 方块选择器 -->
+  <div id="block-selector">
+    <div class="block-btn active" data-block="grass">🌿</div>
+    <div class="block-btn" data-block="dirt">🟫</div>
+    <div class="block-btn" data-block="stone">🪨</div>
+    <div class="block-btn" data-block="wood">🪵</div>
+    <div class="block-btn" data-block="leaves">🍃</div>
+  </div>
+  
+  <!-- 移动端提示 -->
+  <div id="mobile-hint">
+    <p>👆 右侧滑动：视角</p>
+    <p>👈 左摇杆：移动</p>
+    <p>👇 按钮：操作</p>
+  </div>
+  
+  <div id="game-container"></div>
+  
+  <script>
+    // ========== 移动端触摸控制 ==========
+    
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const debugInfo = document.getElementById('debug-info');
+    
+    function debug(msg) {
+      console.log('[Mobile]', msg);
+      debugInfo.innerHTML += msg + '<br>';
+    }
+    
+    if (isMobile) {
+      document.getElementById('mobile-indicator').style.display = 'block';
+      debugInfo.style.display = 'block';
+      
+      const hint = document.getElementById('mobile-hint');
+      hint.style.display = 'block';
+      setTimeout(() => hint.style.display = 'none', 4000);
+      
+      debug('Mobile detected: ' + navigator.userAgent);
+    }
+    
+    // ========== 键盘事件模拟器 ==========
+    function simulateKey(key, type = 'keydown') {
+      const event = new KeyboardEvent(type, {
+        key: key,
+        code: 'Key' + key.toUpperCase(),
+        keyCode: key.charCodeAt(0),
+        which: key.charCodeAt(0),
+        bubbles: true,
+        cancelable: true
+      });
+      document.dispatchEvent(event);
+      debug('Key ' + type + ': ' + key);
+    }
+    
+    function simulateMouseButton(button, type = 'mousedown') {
+      const event = new MouseEvent(type, {
+        button: button,
+        bubbles: true,
+        cancelable: true,
+        clientX: window.innerWidth / 2,
+        clientY: window.innerHeight / 2
+      });
+      document.dispatchEvent(event);
+      debug('Mouse ' + type + ': button ' + button);
+    }
+    
+    // ========== 虚拟摇杆 ==========
+    const joystickZone = document.getElementById('joystick-zone');
+    const joystickStick = document.getElementById('joystick-stick');
+    const joystickBase = document.getElementById('joystick-base');
+    
+    let joystickActive = false;
+    const pressedKeys = new Set();
+    
+    function updateJoystickVisual(x, y) {
+      const maxDist = 35;
+      const dist = Math.sqrt(x*x + y*y);
+      if (dist > maxDist) {
+        x = (x / dist) * maxDist;
+        y = (y / dist) * maxDist;
+      }
+      joystickStick.style.transform = `translate(${x}px, ${y}px)`;
+      return { x: x/maxDist, y: y/maxDist };
+    }
+    
+    function getJoystickDirection(x, y) {
+      const threshold = 0.3;
+      return {
+        w: y < -threshold,
+        s: y > threshold,
+        a: x < -threshold,
+        d: x > threshold
+      };
+    }
+    
+    joystickZone.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      joystickActive = true;
+      const touch = e.touches[0];
+      const rect = joystickBase.getBoundingClientRect();
+      const x = touch.clientX - rect.left - 60;
+      const y = touch.clientY - rect.top - 60;
+      updateJoystickVisual(x, y);
+      
+      const dir = getJoystickDirection(x/35, y/35);
+      Object.keys(dir).forEach(key => {
+        if (dir[key] && !pressedKeys.has(key)) {
+          pressedKeys.add(key);
+          simulateKey(key, 'keydown');
+        }
+      });
+    }, { passive: false });
+    
+    joystickZone.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (!joystickActive) return;
+      
+      const touch = e.touches[0];
+      const rect = joystickBase.getBoundingClientRect();
+      const x = touch.clientX - rect.left - 60;
+      const y = touch.clientY - rect.top - 60;
+      updateJoystickVisual(x, y);
+      
+      const newDir = getJoystickDirection(x/35, y/35);
+      const oldDir = {};
+      ['w','a','s','d'].forEach(k => oldDir[k] = pressedKeys.has(k));
+      
+      ['w','a','s','d'].forEach(key => {
+        if (newDir[key] && !oldDir[key]) {
+          pressedKeys.add(key);
+          simulateKey(key, 'keydown');
+        } else if (!newDir[key] && oldDir[key]) {
+          pressedKeys.delete(key);
+          simulateKey(key, 'keyup');
+        }
+      });
+    }, { passive: false });
+    
+    joystickZone.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      joystickActive = false;
+      joystickStick.style.transform = 'translate(0, 0)';
+      pressedKeys.forEach(key => simulateKey(key, 'keyup'));
+      pressedKeys.clear();
+    }, { passive: false });
+    
+    // ========== 视角控制 ==========
+    const lookZone = document.getElementById('look-zone');
+    let lookActive = false;
+    let lastTouch = null;
+    
+    lookZone.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      lookActive = true;
+      lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }, { passive: false });
+    
+    lookZone.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (!lookActive || !lastTouch) return;
+      
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - lastTouch.x;
+      const deltaY = touch.clientY - lastTouch.y;
+      
+      // 模拟鼠标移动
+      const moveEvent = new MouseEvent('mousemove', {
+        movementX: deltaX,
+        movementY: deltaY,
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        bubbles: true
+      });
+      document.dispatchEvent(moveEvent);
+      
+      lastTouch = { x: touch.clientX, y: touch.clientY };
+    }, { passive: false });
+    
+    lookZone.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      lookActive = false;
+      lastTouch = null;
+    }, { passive: false });
+    
+    // ========== 按钮控制 ==========
+    document.getElementById('btn-jump').addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      debug('Jump pressed');
+      simulateKey(' ', 'keydown');
+      setTimeout(() => simulateKey(' ', 'keyup'), 150);
+    }, { passive: false });
+    
+    document.getElementById('btn-break').addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      debug('Break pressed');
+      simulateMouseButton(0, 'mousedown');
+      setTimeout(() => simulateMouseButton(0, 'mouseup'), 100);
+    }, { passive: false });
+    
+    document.getElementById('btn-place').addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      debug('Place pressed');
+      simulateMouseButton(2, 'mousedown');
+      setTimeout(() => simulateMouseButton(2, 'mouseup'), 100);
+    }, { passive: false });
+    
+    // 也支持 click 事件（用于桌面端测试）
+    document.getElementById('btn-jump').addEventListener('click', (e) => {
+      e.preventDefault();
+      simulateKey(' ', 'keydown');
+      setTimeout(() => simulateKey(' ', 'keyup'), 150);
+    });
+    
+    document.getElementById('btn-break').addEventListener('click', (e) => {
+      e.preventDefault();
+      simulateMouseButton(0, 'mousedown');
+      setTimeout(() => simulateMouseButton(0, 'mouseup'), 100);
+    });
+    
+    document.getElementById('btn-place').addEventListener('click', (e) => {
+      e.preventDefault();
+      simulateMouseButton(2, 'mousedown');
+      setTimeout(() => simulateMouseButton(2, 'mouseup'), 100);
+    });
+    
+    // ========== 方块选择 ==========
+    document.querySelectorAll('.block-btn').forEach(btn => {
+      btn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        document.querySelectorAll('.block-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const block = btn.dataset.block;
+        const index = ['grass','dirt','stone','wood','leaves'].indexOf(block) + 1;
+        debug('Block selected: ' + block + ' (slot ' + index + ')');
+        // 模拟数字键选择
+        simulateKey(index.toString(), 'keydown');
+        setTimeout(() => simulateKey(index.toString(), 'keyup'), 100);
+      }, { passive: false });
+      
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.querySelectorAll('.block-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const block = btn.dataset.block;
+        const index = ['grass','dirt','stone','wood','leaves'].indexOf(block) + 1;
+        simulateKey(index.toString(), 'keydown');
+        setTimeout(() => simulateKey(index.toString(), 'keyup'), 100);
+      });
+    });
+    
+    // ========== 阻止默认行为 ==========
+    document.addEventListener('touchmove', (e) => {
+      if (e.target.closest('#joystick-zone') || 
+          e.target.closest('#controls') || 
+          e.target.closest('#block-selector')) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+    
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
+    document.addEventListener('gesturechange', (e) => e.preventDefault());
+    document.addEventListener('gestureend', (e) => e.preventDefault());
+    
+    // 阻止双击缩放
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) {
+        e.preventDefault();
+      }
+      lastTouchEnd = now;
+    }, { passive: false });
+    
+    debug('Mobile controls initialized');
+  </script>
+  
+  <script type="module" crossorigin src="/assets/index-Cgt9fWGz.js"></script>
+</body>
+</html>
